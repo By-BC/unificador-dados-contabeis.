@@ -1,35 +1,104 @@
 import streamlit as st
 import pandas as pd
-from ofxparse import OfxParser
-import re
 import plotly.express as px
+from ofxparse import OfxParser
+import io
+import re
 
-# --- CONFIGURAÇÃO E TEMA ---
-st.set_page_config(page_title="Analisegroup | Unificador", page_icon="📊", layout="wide")
+# --- CONFIGURAÇÃO DA PÁGINA (ESTÉTICA DE GALA) ---
+st.set_page_config(
+    page_title="Analisegroup | BPO Intelligence",
+    page_icon="💎",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# CSS Blindado - Estética Analisegroup (Preto e Dourado)
+# --- INJEÇÃO DE CSS AVANÇADO (DESIGN SYSTEM) ---
 st.markdown("""
 <style>
-    .stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"] { background-color: #0A0A0A !important; }
-    h1, h2, h3, h4, h5, h6, p, span, label { color: #F0F0F0 !important; }
+    /* Importando fonte sofisticada */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
     
-    /* Botões com Gradiente Dourado */
-    div.stButton > button, div.stDownloadButton > button, section[data-testid="stFileUploader"] section button {
-        background-image: linear-gradient(135deg, #E2BC7A 0%, #C5A059 100%) !important;
-        color: #000000 !important; 
-        border: none !important; 
-        font-weight: 800 !important; 
-        text-transform: uppercase;
+    html, body, [class*="css"] {
+        font-family: 'Inter', sans-serif;
+        background-color: #0E1117;
+    }
+
+    /* Estilização da Sidebar */
+    [data-testid="stSidebar"] {
+        background-color: #050505;
+        border-right: 1px solid #C5A05933;
+    }
+
+    /* Cartões com Efeito Glassmorphism */
+    .stMetric, .css-1r6slb0, .st-emotion-cache-1r6slb0 {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(197, 160, 89, 0.2);
+        border-radius: 12px;
+        padding: 20px;
+        transition: transform 0.3s ease;
+    }
+
+    /* Botões Dourados com Brilho */
+    .stButton > button {
+        background: linear-gradient(135deg, #C5A059 0%, #8E794E 100%) !important;
+        color: #000 !important;
+        font-weight: 700 !important;
+        border: none !important;
         border-radius: 8px !important;
+        transition: all 0.3s ease !important;
+        text-transform: uppercase;
+        letter-spacing: 1px;
     }
     
-    /* Área de Upload */
-    section[data-testid="stFileUploader"] { 
-        background-color: #1A1A1A !important; 
-        border: 1px dashed #C5A059 !important; 
+    .stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(197, 160, 89, 0.4) !important;
     }
+
+    /* Tabs (Abas) customizadas */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 24px;
+        background-color: transparent;
+    }
+
+    .stTabs [data-baseweb="tab"] {
+        height: 50px;
+        background-color: transparent !important;
+        border-bottom: 2px solid transparent !important;
+        color: #F0F0F0 !important;
+        font-weight: 600;
+    }
+
+    .stTabs [aria-selected="true"] {
+        color: #C5A059 !important;
+        border-bottom: 2px solid #C5A059 !important;
+    }
+
+    /* Escondendo lixo da interface Streamlit */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
 </style>
 """, unsafe_allow_html=True)
+
+# --- SIDEBAR DE GOVERNANÇA ---
+with st.sidebar:
+    st.image("assets/logo.png", width=180) # Certifique-se que o caminho está correto
+    st.markdown("---")
+    st.markdown("### 🛠️ Status do Sistema")
+    st.success("Motor de Match: Ativo")
+    st.info("Regras Contábeis: v4.2")
+    
+    st.markdown("---")
+    st.markdown("### 👤 Auditor Responsável")
+    st.write("**Bruno Candido**")
+    st.caption("IT & BPO Specialist")
+    
+    st.markdown("---")
+    if st.button("Limpar Cache / Novo Cliente"):
+        st.cache_data.clear()
+        st.rerun()
 
 # --- SISTEMA DE SEGURANÇA (GOVERNANÇA DE TI) ---
 def check_password():
