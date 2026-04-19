@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="https://raw.githubusercontent.com/bruno-candido/unificador-dados-contabeis/main/assets/logo.png" width="250" alt="Analisegroup Logo">
+  <img src="https://raw.githubusercontent.com/by-BC/unificador-dados-contabeis/main/assets/logo.png" width="250" alt="Analisegroup Logo">
 
   <h3 style="color: #C5A059; text-transform: uppercase; letter-spacing: 2px;">BPO Financeiro & Auditoria Digital</h3>
 
@@ -50,5 +50,5 @@ Certifique-se de ter o Python 3.9+ instalado em sua máquina.
 
 ### 2. Clonando o Repositório
 ```bash
-git clone [https://github.com/bruno-candido/unificador-dados-contabeis.git](https://github.com/bruno-candido/unificador-dados-contabeis.git)
+git clone [https://github.com/by-BC/unificador-dados-contabeis.git](https://github.com/by-BC/unificador-dados-contabeis.git)
 cd unificador-dados-contabeis
