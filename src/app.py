@@ -87,7 +87,7 @@ with col_up2:
     st.markdown("<p style='color:#C5A059; font-weight:bold; margin-bottom:0;'>2. A Verdade da Empresa</p>", unsafe_allow_html=True)
     arquivo_erp = st.file_uploader("Controle Interno (CSV ou Excel)", type=["csv", "xlsx"])
     
-    valores_erp = [] 
+    fila_erp = [] # Agora vai guardar um "dicionário" com Data e Valor
     if arquivo_erp:
         try:
             if arquivo_erp.name.endswith('.csv'):
@@ -96,35 +96,32 @@ with col_up2:
                 df_erp = pd.read_excel(arquivo_erp)
             
             coluna_valor = [col for col in df_erp.columns if 'VALOR' in str(col).upper()]
+            coluna_data = [col for col in df_erp.columns if 'DATA' in str(col).upper()]
             
-            if coluna_valor:
-                # --- O FAXINEIRO DE DADOS (NOVO) ---
+            if coluna_valor and coluna_data:
+                # O Faxineiro de Valores
                 def limpar_numero(x):
                     try:
-                        # Se for vazio, ignora
                         if pd.isna(x): return None
-                        # Se já for número nativo, mantém
                         if isinstance(x, (int, float)): return float(x)
-                        
-                        # Converte para texto e limpa sujeiras comuns de sistemas financeiros
                         x_str = str(x).upper().replace('R$', '').strip()
-                        
-                        # Se tiver vírgula, assume que é padrão BR (tira pontos de milhar e troca vírgula por ponto)
-                        if ',' in x_str:
-                            x_str = x_str.replace('.', '').replace(',', '.')
-                            
+                        if ',' in x_str: x_str = x_str.replace('.', '').replace(',', '.')
                         return float(x_str)
-                    except:
-                        # Se for um texto irrecuperável (ex: "Saldo Anterior"), vira None e será apagado
-                        return None 
-                        
-                # Aplica o faxineiro, apaga os valores nulos e só então aplica o valor absoluto
-                valores_limpos = df_erp[coluna_valor[0]].apply(limpar_numero).dropna()
-                valores_erp = valores_limpos.abs().tolist()
+                    except: return None 
                 
-                st.success(f"✅ ERP carregado! {len(valores_erp)} lançamentos válidos prontos para auditoria.")
+                # Prepara as duas colunas: Valor e Data
+                df_erp['Valor_Limpo'] = df_erp[coluna_valor[0]].apply(limpar_numero)
+                df_erp['Data_Parsed'] = pd.to_datetime(df_erp[coluna_data[0]], errors='coerce')
+                
+                # Remove linhas vazias e cria a fila de pendências do ERP
+                df_erp_valido = df_erp.dropna(subset=['Valor_Limpo', 'Data_Parsed'])
+                
+                # Transforma em uma lista de registros (Data e Valor) para o Match
+                fila_erp = df_erp_valido[['Data_Parsed', 'Valor_Limpo']].to_dict('records')
+                
+                st.success(f"✅ ERP carregado! {len(fila_erp)} lançamentos com Data e Valor prontos.")
             else:
-                st.error("A planilha precisa ter uma coluna chamada 'Valor'.")
+                st.error("A planilha do ERP precisa ter as colunas 'Data' e 'Valor'.")
         except Exception as e:
             st.error(f"Erro na leitura do arquivo: {e}")
 
@@ -135,7 +132,7 @@ if not arquivos_ofx:
     st.info("👆 Por favor, anexe os extratos OFX para iniciar a auditoria.")
     st.stop() # Para a execução do aplicativo aqui até que o arquivo seja enviado
 
-if not valores_erp:
+if not fila_erp:
     st.warning("⚠️ Operando apenas com a Verdade do Banco. Anexe o Controle Interno (ERP) para habilitar o Motor de Match.")
     # Aqui NÃO usamos st.stop() porque o contador pode querer apenas o consolidador de OFX
 
@@ -203,31 +200,39 @@ if arquivos_ofx:
     
     df = pd.DataFrame(dados)
     
-    # --- MOTOR DE MATCH (CONTROLE LÓGICO DE CONCILIAÇÃO) ---
-    if valores_erp:
-        # Criamos uma cópia da fila do ERP para ir "dando baixa"
-        fila_erp = valores_erp.copy()
+    # --- MOTOR DE MATCH (Valor exato + Janela de 3 dias) ---
+    if fila_erp:
         status_match = []
+        # Garante que a data do banco seja um formato de data reconhecido
+        df['Data_Parsed'] = pd.to_datetime(df['Data'], errors='coerce')
         
-        # Percorre cada linha do Banco (OFX)
-        for valor_banco in df['Valor'].abs():
+        for idx, row in df.iterrows():
+            valor_banco = abs(row['Valor'])
+            data_banco = row['Data_Parsed']
             match_encontrado = False
             
-            # Tenta encontrar o valor exato na fila do ERP
-            for valor_cliente in fila_erp:
-                # Usamos uma margem mínima (0.01) para evitar erros de arredondamento do Python
-                if abs(valor_banco - valor_cliente) < 0.01:
-                    status_match.append('✅ Conciliado')
-                    fila_erp.remove(valor_cliente) # Consome o valor para não dar match duplo
-                    match_encontrado = True
-                    break # Para de procurar e vai para a próxima linha do banco
+            # Só tenta cruzar se tiver uma data válida no banco
+            if pd.notnull(data_banco):
+                for item_erp in fila_erp:
+                    valor_cliente = abs(item_erp['Valor_Limpo'])
+                    data_cliente = item_erp['Data_Parsed']
+                    
+                    # 1. Bateu o valor?
+                    if abs(valor_banco - valor_cliente) < 0.01:
+                        # 2. Bateu a data? (Tolerância de até 3 dias de diferença)
+                        diferenca_dias = abs((data_banco - data_cliente).days)
+                        if diferenca_dias <= 3:
+                            status_match.append('✅ Conciliado')
+                            fila_erp.remove(item_erp) # Tira da fila para não dar match duplo
+                            match_encontrado = True
+                            break # Para de procurar
             
             if not match_encontrado:
                 status_match.append('❌ Pendente no ERP')
                 
         df['Status'] = status_match
+        df = df.drop(columns=['Data_Parsed']) # Limpa a coluna auxiliar
     else:
-        # Se não enviou o ERP, fica tudo aguardando
         df['Status'] = '⚠️ Aguardando ERP'
         
 
@@ -268,7 +273,7 @@ if arquivos_ofx:
     df_tela = df.copy()
     df_tela['Valor'] = df_tela['Valor'].apply(lambda x: f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
 
-    if valores_erp:
+    if fila_erp:
         total_banco = len(df)
         conciliados = len(df[df['Status'] == '✅ Conciliado'])
         pendentes = len(df[df['Status'] == '❌ Pendente no ERP'])
