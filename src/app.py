@@ -85,15 +85,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- INICIALIZAÇÃO DA MEMÓRIA DE APRENDIZADO ---
-if 'regras_custom' not in st.session_state:
-    st.session_state['regras_custom'] = {
-        'IFOOD': 'Refeições e Alimentação',
-        'UBER': 'Transporte / Viagens',
-        'POSTO': 'Combustíveis',
-        'CONDOMINIO': 'Despesas com Imóvel'
-    }
-
 # --- SISTEMA DE SEGURANÇA (GOVERNANÇA DE TI) ---
 def check_password():
     if st.session_state.get("password_correct", False):
@@ -318,17 +309,9 @@ REGRAS_CATEGORIZACAO = {
 
 def categorizar_transacao(historico):
     hist_upper = str(historico).upper()
-    
-    # 1. Primeiro checa as regras que o usuário ensinou na tela
-    for palavra, categoria in st.session_state['regras_custom'].items():
-        if palavra in hist_upper:
-            return categoria
-            
-    # 2. Depois checa as regras fixas do sistema (aquelas que já tínhamos)
     for palavra_chave, categoria in REGRAS_CATEGORIZACAO.items():
         if palavra_chave in hist_upper:
             return categoria
-            
     return 'Não Categorizado (Pendente)'
 
 if arquivos_ofx:
@@ -404,28 +387,6 @@ if arquivos_ofx:
     tem_transferencias = len(lista_transferencias) > 0
     if tem_transferencias:
         df_transferencias = pd.concat(lista_transferencias).drop(columns=['Valor_Abs'])
-
-    # --- 🧠 INTELIGÊNCIA DE CATEGORIZAÇÃO (IA SUPERVISIONADA) ---
-    with st.expander("🧠 Ensinar Novas Categorias ao Sistema"):
-        st.markdown("<p style='font-size: 13px; color: #888;'>Digite a palavra-chave e a categoria desejada (Ex: IFOOD:Alimentação). Use ponto e vírgula para várias.</p>", unsafe_allow_html=True)
-        
-        regras_input = st.text_area(
-            "Regras Atuais (Palavra:Categoria)", 
-            value="; ".join([f"{k}:{v}" for k, v in st.session_state['regras_custom'].items()]),
-            help="Siga o padrão PALAVRA:CATEGORIA separando por ponto e vírgula."
-        )
-        
-        if st.button("SALVAR E APLICAR INTELIGÊNCIA"):
-            novas_regras = {}
-            for item in regras_input.split(';'):
-                if ':' in item:
-                    k, v = item.split(':')
-                    novas_regras[k.strip().upper()] = v.strip()
-            st.session_state['regras_custom'] = novas_regras
-            st.success("Cérebro atualizado! As categorias serão aplicadas nos próximos processamentos.")
-            st.rerun()
-
-    st.write("---")
 
     # --- FILTROS DE AUDITORIA (OTIMIZAÇÃO UX) ---
     st.write("---")
@@ -564,27 +525,50 @@ if arquivos_ofx:
     st.write("---")
 
     # --- 5. ANÁLISE DETALHADA POR INSTITUIÇÃO ---
-    st.write("### 🏦 Detalhamento por Banco")
-    c1, c2 = st.columns(2)
+    
+    # --- 📈 TENDÊNCIAS E EVOLUÇÃO MENSAL (SUBSTITUIÇÃO DO GRÁFICO DE BANCOS) ---
+    st.write("### 📈 Evolução de Fluxo de Caixa")
+    
+    # Preparação dos dados para o gráfico de linha
+    df_evolucao = df_filtrado.copy()
+    
+    # Verifica se há mais de um mês para agrupar por período ou por dia
+    if df_evolucao['Data'].dt.to_period('M').nunique() > 1:
+        df_evolucao['Periodo'] = df_evolucao['Data'].dt.to_period('M').astype(str)
+    else:
+        df_evolucao['Periodo'] = df_evolucao['Data'].dt.strftime('%d/%m')
 
-    with c1:
-        st.write("#### 💰 Volume Financeiro Total")
-        df_vol_banco = df_filtrado.groupby('Banco')['Valor'].apply(lambda x: x.abs().sum()).reset_index()
-        df_vol_banco = df_vol_banco.sort_values('Valor', ascending=False)
-        fig1 = px.bar(df_vol_banco, x='Banco', y='Valor', text='Valor', color='Banco', color_discrete_sequence=['#C5A059', '#E2BC7A', '#8E794E', '#5C4A26'], template="plotly_dark")
-        fig1.update_traces(texttemplate='R$ %{y:,.2f}', textposition='outside', cliponaxis=False)
-        fig1.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", showlegend=False, yaxis_visible=False, xaxis_title=None, margin=dict(t=50, b=0, l=0, r=0))
-        st.plotly_chart(fig1, use_container_width=True)
+    df_evol_agrupada = df_evolucao.groupby(['Periodo', 'Tipo'])['Valor'].sum().abs().reset_index()
 
-    with c2:
-        st.write("#### 📊 Frequência de Transações")
-        df_banco_count = df['Banco'].value_counts().reset_index()
-        fig2 = px.pie(df_banco_count, values='count', names='Banco', color_discrete_sequence=['#C5A059', '#E2BC7A', '#8E794E', '#5C4A26'], template="plotly_dark", hole=.6)
-        fig2.update_layout(paper_bgcolor="rgba(0,0,0,0)", margin=dict(t=50, b=0, l=0, r=0))
-        fig2.update_traces(textinfo='percent+label', pull=[0.05 if i == 0 else 0 for i in range(len(df_banco_count))])
-        st.plotly_chart(fig2, use_container_width=True)
+    # Criando o gráfico de linhas com design refinado
+    fig_evol = px.line(
+        df_evol_agrupada,
+        x='Periodo',
+        y='Valor',
+        color='Tipo',
+        markers=True,
+        line_shape="spline", 
+        color_discrete_map={'CREDITO': '#C5A059', 'DEBITO': '#FF4B4B'},
+        template="plotly_dark"
+    )
 
-    st.write("---")
+    # Ajustes de layout para manter o padrão Premium
+    fig_evol.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, title=None),
+        xaxis=dict(title=None, showgrid=False),
+        yaxis=dict(title="Montante (R$)", showgrid=True, gridcolor='rgba(255,255,255,0.05)'),
+        margin=dict(t=50, b=0, l=0, r=0),
+        hovermode="x unified"
+    )
+
+    fig_evol.update_traces(
+        line=dict(width=4),
+        marker=dict(size=8)
+    )
+
+    st.plotly_chart(fig_evol, use_container_width=True)
 
     # --- 6. AUDITORIA DE TRANSFERÊNCIAS (Ficou no final como anexo visual) ---
     if tem_transferencias:
