@@ -1,12 +1,15 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 from ofxparse import OfxParser
 import io
 import re
 import base64
 
-# --- CONFIGURAÇÃO DA PÁGINA (CLEAN & PREMIUM) ---
+# =============================================================================
+# CONFIGURAÇÃO DA PÁGINA
+# =============================================================================
 st.set_page_config(
     page_title="Analisegroup | Financial Intelligence",
     page_icon="💎",
@@ -14,7 +17,9 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- INJEÇÃO DE CSS (ALTA COSTURA DIGITAL) ---
+# =============================================================================
+# CSS — IDENTIDADE VISUAL PREMIUM
+# =============================================================================
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;600&display=swap');
@@ -26,18 +31,6 @@ st.markdown("""
     }
 
     [data-testid="stHeader"], [data-testid="stSidebar"], footer {display: none !important;}
-
-    .main-header {
-        text-align: center;
-        padding: 40px 0 20px 0;
-        border-bottom: 1px solid rgba(197, 160, 89, 0.2);
-        margin-bottom: 40px;
-    }
-
-    .main-header img {
-        width: 220px;
-        margin-bottom: 15px;
-    }
 
     div[data-testid="stMetric"] {
         background: #0A0A0A !important;
@@ -75,73 +68,39 @@ st.markdown("""
         color: #C5A059 !important;
         border: 1px solid #333 !important;
     }
+
+    .stTabs [data-baseweb="tab-list"] {
+        background: #0A0A0A;
+        border-bottom: 1px solid #1A1A1A;
+        gap: 0;
+    }
+    .stTabs [data-baseweb="tab"] {
+        color: #555 !important;
+        font-size: 12px;
+        letter-spacing: 1px;
+        padding: 10px 20px;
+    }
+    .stTabs [aria-selected="true"] {
+        color: #C5A059 !important;
+        border-bottom: 2px solid #C5A059 !important;
+        background: transparent !important;
+    }
+
+    .streamlit-expanderHeader {
+        background: #0A0A0A !important;
+        border: 1px solid #1A1A1A !important;
+        border-radius: 4px !important;
+        color: #C5A059 !important;
+        font-size: 12px !important;
+        letter-spacing: 1px !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 
 # =============================================================================
-# CORREÇÃO 1: Espaçamento via CSS (substituindo os st.write("") frágeis)
-# e remoção do bloco de formulário DUPLICADO que nunca era executado.
+# FUNÇÕES UTILITÁRIAS
 # =============================================================================
-def check_password():
-    if st.session_state.get("password_correct", False):
-        return True
-
-    # CORREÇÃO 1A: Margem controlada por CSS — consistente em qualquer altura de tela
-    st.markdown("<div style='margin-top: 15vh;'></div>", unsafe_allow_html=True)
-
-    col_vazia1, col_login, col_vazia2 = st.columns([1.5, 1, 1.5])
-
-    with col_login:
-        col_img_esq, col_img_centro, col_img_dir = st.columns([1, 2, 1])
-
-        with col_img_centro:
-            try:
-                st.image("assets/logo.png", use_container_width=True)
-            except Exception:
-                st.error("⚠️ Logo não encontrado na pasta assets/logo.png")
-
-        st.markdown(
-            "<p style='text-align: center; color: #C5A059; letter-spacing: 2px; "
-            "font-size: 10px; font-weight: 600; margin-top: 10px; margin-bottom: 25px;'>"
-            "BPO FINANCEIRO & AUDITORIA DIGITAL</p>",
-            unsafe_allow_html=True
-        )
-
-        # CORREÇÃO 1B: Formulário definido UMA única vez — bloco duplicado removido
-        with st.form("login_form", clear_on_submit=False):
-            password = st.text_input("Credencial de Acesso", type="password")
-            submit_button = st.form_submit_button("AUTENTICAR")
-
-            if submit_button:
-                if password == st.secrets["general"]["access_password"]:
-                    st.session_state["password_correct"] = True
-                    st.rerun()
-                else:
-                    st.error("Credencial incorreta. Tente novamente.")
-
-    # Auto-focus no campo de senha
-    st.components.v1.html(
-        """
-        <script>
-        setTimeout(function() {
-            var input = window.parent.document.querySelector('input[type="password"]');
-            if (input) { input.focus(); }
-        }, 100);
-        </script>
-        """,
-        height=0,
-        width=0
-    )
-
-    return False
-
-
-if not check_password():
-    st.stop()
-
-
-# --- CABEÇALHO UNIFICADO CLEAN COM MINI LOGO ---
 def get_image_base64(path):
     try:
         with open(path, "rb") as img_file:
@@ -149,39 +108,33 @@ def get_image_base64(path):
     except Exception:
         return ""
 
-logo_base64 = get_image_base64("assets/logo.png")
-img_html = f'<img src="data:image/png;base64,{logo_base64}" style="height: 28px; margin-right: 12px;">' if logo_base64 else ""
+def formatar_brl(valor: float) -> str:
+    """Formata número para o padrão brasileiro: 1.234,56"""
+    return f"{valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
-st.write("")
-col_cabecalho, col_logout = st.columns([8, 1])
+def kpi_card(titulo: str, valor: float, cor_borda: str, cor_valor: str) -> str:
+    """Gera HTML de um card de KPI no padrão visual Analisegroup."""
+    return f"""
+    <div style='border:1px solid {cor_borda};border-bottom:3px solid {cor_borda};
+                padding:16px 20px;border-radius:4px;background:#0A0A0A;'>
+        <p style='margin:0 0 6px 0;color:#666;text-transform:uppercase;
+                  font-size:9px;letter-spacing:2px;'>{titulo}</p>
+        <h2 style='margin:0;color:{cor_valor};font-size:20px;'>R$ {valor:,.2f}</h2>
+    </div>"""
 
-with col_cabecalho:
-    st.markdown(f"""
-        <div style="padding-top: 5px; display: flex; align-items: center;">
-            {img_html}
-            <span style='color: #C5A059; font-size: 20px; letter-spacing: 2px; font-weight: 700; text-transform: uppercase;'>
-                Analisegroup
-            </span>
-            <span style='color: #333; font-size: 20px; margin: 0 10px;'>|</span>
-            <span style='color: #F0F0F0; font-size: 18px; font-weight: 300; letter-spacing: 1px;'>
-                Conciliação BPO e Unificação OFX
-            </span>
-        </div>
-    """, unsafe_allow_html=True)
+def section_label(texto: str):
+    st.markdown(
+        f"<p style='font-size:9px;font-weight:600;letter-spacing:3px;color:#C5A059;"
+        f"text-transform:uppercase;margin-bottom:12px;'>{texto}</p>",
+        unsafe_allow_html=True
+    )
 
-with col_logout:
-    if st.button("SAIR", key="btn_logout", use_container_width=True):
-        st.session_state["password_correct"] = False
-        st.rerun()
+def section_divider():
+    st.markdown(
+        "<hr style='border:none;border-bottom:1px solid #111;margin:24px 0;'>",
+        unsafe_allow_html=True
+    )
 
-st.markdown(
-    "<hr style='border: none; border-bottom: 1px solid rgba(197, 160, 89, 0.2); "
-    "margin-top: 10px; margin-bottom: 30px;'>",
-    unsafe_allow_html=True
-)
-
-
-# --- LÓGICA DE NEGÓCIO ---
 def extrair_cnpj(memo):
     numeros = re.sub(r'[^0-9]', '', str(memo))
     if len(numeros) >= 14:
@@ -191,89 +144,17 @@ def extrair_cnpj(memo):
             return f"{c[:2]}.{c[2:5]}.{c[5:8]}/{c[8:12]}-{c[12:]}"
     return ""
 
-
-# =============================================================================
-# CORREÇÃO 2: Função reutilizável para cards de KPI
-# Substitui os 3 blocos st.markdown() com HTML gigante em linha única
-# =============================================================================
-def kpi_card(titulo: str, valor: float, cor_borda: str, cor_valor: str) -> str:
-    """Gera HTML de um card de KPI no padrão visual Analisegroup."""
-    return f"""
-    <div style='border: 1px solid {cor_borda}; padding: 20px;
-                border-radius: 10px; text-align: center;'>
-        <p style='margin: 0; color: #F0F0F0; text-transform: uppercase;
-                  font-size: 12px; letter-spacing: 2px;'>
-            {titulo}
-        </p>
-        <h2 style='margin: 0; color: {cor_valor};'>
-            R$ {valor:,.2f}
-        </h2>
-    </div>"""
+def categorizar_transacao(historico):
+    hist_upper = str(historico).upper()
+    for palavra_chave, categoria in REGRAS_CATEGORIZACAO.items():
+        if palavra_chave in hist_upper:
+            return categoria
+    return 'Não Categorizado (Pendente)'
 
 
 # =============================================================================
-# CORREÇÃO 3: Função para formatar valores no padrão BR (legível e reutilizável)
-# Substitui o lambda com replace() encadeado espalhado pelo código
+# DADOS DE REFERÊNCIA
 # =============================================================================
-def formatar_brl(valor: float) -> str:
-    """Formata número para o padrão brasileiro: 1.234,56"""
-    return f"{valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-
-
-# --- ÁREAS DE UPLOAD ---
-st.markdown("### 📥 Entrada de Dados (Preparação para o Match)")
-col_up1, col_up2 = st.columns(2)
-
-with col_up1:
-    st.markdown("<p style='color:#C5A059; font-weight:bold; margin-bottom:0;'>1. A Verdade do Banco</p>", unsafe_allow_html=True)
-    arquivos_ofx = st.file_uploader("Extratos OFX (Múltiplos)", type=["ofx"], accept_multiple_files=True)
-
-with col_up2:
-    st.markdown("<p style='color:#C5A059; font-weight:bold; margin-bottom:0;'>2. A Verdade da Empresa</p>", unsafe_allow_html=True)
-    arquivo_erp = st.file_uploader("Controle Interno (CSV ou Excel)", type=["csv", "xlsx"])
-
-    fila_erp = []
-    if arquivo_erp:
-        try:
-            if arquivo_erp.name.endswith('.csv'):
-                df_erp = pd.read_csv(arquivo_erp, sep=';', decimal=',')
-            else:
-                df_erp = pd.read_excel(arquivo_erp)
-
-            coluna_valor = [col for col in df_erp.columns if 'VALOR' in str(col).upper()]
-            coluna_data  = [col for col in df_erp.columns if 'DATA'  in str(col).upper()]
-
-            if coluna_valor and coluna_data:
-                def limpar_numero(x):
-                    try:
-                        if pd.isna(x): return None
-                        if isinstance(x, (int, float)): return float(x)
-                        x_str = str(x).upper().replace('R$', '').strip()
-                        if ',' in x_str: x_str = x_str.replace('.', '').replace(',', '.')
-                        return float(x_str)
-                    except:
-                        return None
-
-                df_erp['Valor_Limpo'] = df_erp[coluna_valor[0]].apply(limpar_numero)
-                df_erp['Data_Parsed'] = pd.to_datetime(df_erp[coluna_data[0]], errors='coerce')
-                df_erp_valido = df_erp.dropna(subset=['Valor_Limpo', 'Data_Parsed'])
-                fila_erp = df_erp_valido[['Data_Parsed', 'Valor_Limpo']].to_dict('records')
-                st.success(f"✅ ERP carregado! {len(fila_erp)} lançamentos com Data e Valor prontos.")
-            else:
-                st.error("A planilha do ERP precisa ter as colunas 'Data' e 'Valor'.")
-        except Exception as e:
-            st.error(f"Erro na leitura do arquivo: {e}")
-
-st.markdown("---")
-
-if not arquivos_ofx:
-    st.info("👆 Por favor, anexe os extratos OFX para iniciar a auditoria.")
-    st.stop()
-
-if not fila_erp:
-    st.warning("⚠️ Operando apenas com a Verdade do Banco. Anexe o Controle Interno (ERP) para habilitar o Motor de Match.")
-
-# --- MAPEAMENTO DE BANCOS ---
 BANCOS_MAPEADOS = {
     '1':   'Banco do Brasil',
     '33':  'Santander',
@@ -283,13 +164,12 @@ BANCOS_MAPEADOS = {
     '77':  'Inter',
     '260': 'Nubank',
     '634': 'Tribanco',  # COMPE oficial (Banco Triângulo S.A.)
-    '382': 'Tribanco',  # Código alternativo usado em arquivos OFX legados
+    '382': 'Tribanco',  # Código alternativo em arquivos OFX legados
     '41':  'Banrisul',
     '422': 'Banco Safra',
     '74':  'Banco Safra'
 }
 
-# --- INTELIGÊNCIA DE CATEGORIZAÇÃO ---
 REGRAS_CATEGORIZACAO = {
     'TARIFA':         'Despesas Bancárias',
     'MANUT':          'Despesas Bancárias',
@@ -307,261 +187,508 @@ REGRAS_CATEGORIZACAO = {
     'SAQUE':          'Saques em Espécie'
 }
 
-def categorizar_transacao(historico):
-    hist_upper = str(historico).upper()
-    for palavra_chave, categoria in REGRAS_CATEGORIZACAO.items():
-        if palavra_chave in hist_upper:
-            return categoria
-    return 'Não Categorizado (Pendente)'
+CORES_CATEGORIA = {
+    'Despesas Bancárias':         '#C5A059',
+    'Transferências Pix':         '#4A90D9',
+    'Transferências':             '#5BA85B',
+    'Pagamento de Fornecedores':  '#D97B4A',
+    'Impostos':                   '#D94A4A',
+    'Folha de Pagamento':         '#9B59B6',
+    'Rendimentos de Aplicação':   '#1ABC9C',
+    'Impostos Financeiros':       '#E74C3C',
+    'Saques em Espécie':          '#95A5A6',
+    'Não Categorizado (Pendente)':'#555555'
+}
 
 
-if arquivos_ofx:
-    dados = []
-    for f in arquivos_ofx:
-        ofx = OfxParser.parse(f)
-        codigo_raw  = str(ofx.account.routing_number).strip()
-        codigo_limpo = codigo_raw.lstrip('0')
-        nome_banco  = BANCOS_MAPEADOS.get(codigo_limpo, f"Banco {codigo_raw}")
+# =============================================================================
+# SISTEMA DE LOGIN
+# =============================================================================
+def check_password():
+    if st.session_state.get("password_correct", False):
+        return True
 
-        for t in ofx.account.statement.transactions:
-            v = float(t.amount)
-            dados.append({
-                'Banco':     nome_banco,
-                'Data':      t.date,
-                'Valor':     v,
-                'Tipo':      'CREDITO' if v >= 0 else 'DEBITO',
-                'Categoria': categorizar_transacao(t.memo),
-                'CNPJ':      extrair_cnpj(t.memo),
-                'Histórico': t.memo
-            })
+    st.markdown("<div style='margin-top:15vh;'></div>", unsafe_allow_html=True)
 
-    df = pd.DataFrame(dados)
+    _, col_login, _ = st.columns([1.5, 1, 1.5])
 
-    # --- MOTOR DE MATCH (Valor exato + Janela de 3 dias) ---
-    if fila_erp:
-        status_match = []
-        df['Data_Parsed'] = pd.to_datetime(df['Data'], errors='coerce')
+    with col_login:
+        _, col_img, _ = st.columns([1, 2, 1])
+        with col_img:
+            try:
+                st.image("assets/logo.png", use_container_width=True)
+            except Exception:
+                st.error("⚠️ Logo não encontrado em assets/logo.png")
 
-        for idx, row in df.iterrows():
-            valor_banco  = abs(row['Valor'])
-            data_banco   = row['Data_Parsed']
-            match_encontrado = False
-
-            if pd.notnull(data_banco):
-                for item_erp in fila_erp:
-                    valor_cliente = abs(item_erp['Valor_Limpo'])
-                    data_cliente  = item_erp['Data_Parsed']
-
-                    if abs(valor_banco - valor_cliente) < 0.01:
-                        diferenca_dias = abs((data_banco - data_cliente).days)
-                        if diferenca_dias <= 3:
-                            status_match.append('✅ Conciliado')
-                            fila_erp.remove(item_erp)
-                            match_encontrado = True
-                            break
-
-            if not match_encontrado:
-                status_match.append('❌ Pendente no ERP')
-
-        df['Status'] = status_match
-        df = df.drop(columns=['Data_Parsed'])
-    else:
-        df['Status'] = '⚠️ Aguardando ERP'
-
-    # --- DETECÇÃO DE TRANSFERÊNCIAS INTERNAS ---
-    df_cruzamento = df.copy()
-    df_cruzamento['Valor_Abs'] = df_cruzamento['Valor'].abs()
-    grupos = df_cruzamento.groupby(['Data', 'Valor_Abs'])
-
-    lista_transferencias = []
-    for nome, grupo in grupos:
-        if len(grupo) >= 2:
-            if 'CREDITO' in grupo['Tipo'].values and 'DEBITO' in grupo['Tipo'].values:
-                lista_transferencias.append(grupo)
-
-    tem_transferencias = len(lista_transferencias) > 0
-    if tem_transferencias:
-        df_transferencias = pd.concat(lista_transferencias).drop(columns=['Valor_Abs'])
-
-    # --- FILTROS DE AUDITORIA ---
-    st.write("---")
-    with st.expander("🎯 Filtros Rápidos de Pesquisa e Auditoria", expanded=True):
-        f_col1, f_col2, f_col3 = st.columns(3)
-        with f_col1:
-            bancos_selecionados = st.multiselect("Filtrar por Banco",      options=df['Banco'].unique(),     default=df['Banco'].unique())
-        with f_col2:
-            cats_selecionadas   = st.multiselect("Filtrar por Categoria",  options=df['Categoria'].unique(), default=df['Categoria'].unique())
-        with f_col3:
-            tipo_selecionado    = st.multiselect("Tipo de Lançamento",     options=df['Tipo'].unique(),      default=df['Tipo'].unique())
-
-    df_filtrado = df[
-        (df['Banco'].isin(bancos_selecionados)) &
-        (df['Categoria'].isin(cats_selecionadas)) &
-        (df['Tipo'].isin(tipo_selecionado))
-    ]
-
-    # --- NOMEAÇÃO DINÂMICA ---
-    try:
-        periodo = pd.to_datetime(df_filtrado['Data']).min().strftime('%m_%Y')
-    except:
-        periodo = "GERAL"
-
-    nome_sugerido_csv = f"ANALISEGROUP_CONSOLIDADO_{periodo}.csv"
-    nome_sugerido_txt = f"IMPORTACAO_DOMINIO_{periodo}.txt"
-
-    # --- AÇÕES RÁPIDAS E EXPORTAÇÃO ---
-    st.write("### 📥 Ações Rápidas e Integração")
-    st.markdown("<p style='color:#C5A059; font-size:14px; margin-bottom:5px;'>Selecione o formato de saída dos dados:</p>", unsafe_allow_html=True)
-    sistema_escolhido = st.radio(
-        "Formato de Exportação",
-        ["Padrão Analisegroup (CSV Gerencial)", "Domínio Sistemas (TXT Contábil)"],
-        horizontal=True,
-        label_visibility="collapsed"
-    )
-
-    st.write("")
-    col_btn1, col_btn2 = st.columns(2)
-
-    with col_btn1:
-        if sistema_escolhido == "Domínio Sistemas (TXT Contábil)":
-            df_export = df.copy()
-            df_export['Conta_Debito']    = df_export.apply(lambda x: 100 if x['Tipo'] == 'CREDITO' else 400, axis=1)
-            df_export['Conta_Credito']   = df_export.apply(lambda x: 300 if x['Tipo'] == 'CREDITO' else 100, axis=1)
-            df_export['Data_Formatada']  = pd.to_datetime(df_export['Data']).dt.strftime('%d/%m/%Y')
-            df_dominio = df_export[['Data_Formatada', 'Conta_Debito', 'Conta_Credito', 'Valor', 'Histórico']].copy()
-            df_dominio.columns = ['Data', 'Conta_Debito', 'Conta_Credito', 'Valor', 'Historico']
-            arquivo_final = df_dominio.to_csv(index=False, sep=';', decimal=',', encoding='windows-1252').encode('windows-1252')
-            nome_arq    = nome_sugerido_txt
-            mime_tipo   = "text/plain"
-            icone_botao = "⚙️ Baixar TXT para Domínio"
-        else:
-            arquivo_final = df.to_csv(index=False, sep=';', decimal=',', encoding='utf-8-sig').encode('utf-8-sig')
-            nome_arq    = nome_sugerido_csv
-            mime_tipo   = "text/csv"
-            icone_botao = "📄 Baixar Planilha Consolidada"
-
-        st.download_button(
-            label=icone_botao,
-            data=arquivo_final,
-            file_name=nome_arq,
-            mime=mime_tipo,
-            use_container_width=True
-        )
-
-    with col_btn2:
-        if tem_transferencias:
-            csv_transf = df_transferencias.to_csv(index=False, sep=';', decimal=',', encoding='utf-8-sig').encode('utf-8-sig')
-            st.download_button(
-                label="🔄 Baixar Relatório de Transferências",
-                data=csv_transf,
-                file_name="analisegroup_transferencias.csv",
-                mime="text/csv",
-                use_container_width=True
-            )
-        else:
-            st.button("✅ Sem transferências internas", disabled=True, use_container_width=True)
-
-    st.markdown("---")
-
-    # --- PAINEL DE TRIAGEM E AUDITORIA ---
-    st.write("### 🔍 Triagem de Conciliação (Auditoria)")
-
-    # CORREÇÃO 3 em uso: formatar_brl() no lugar do lambda encadeado
-    df_tela = df_filtrado.copy()
-    df_tela['Valor'] = df_tela['Valor'].apply(formatar_brl)
-
-    if fila_erp:
-        total_banco  = len(df)
-        conciliados  = len(df[df['Status'] == '✅ Conciliado'])
-        pendentes    = len(df[df['Status'] == '❌ Pendente no ERP'])
-        taxa         = (conciliados / total_banco) * 100 if total_banco > 0 else 0
-
-        st.markdown(f"""
-        <div style='display: flex; justify-content: space-between; background-color: #1A1A1A;
-                    padding: 15px; border-radius: 8px; border-left: 5px solid #C5A059; margin-bottom: 20px;'>
-            <div><span style='color: #F0F0F0;'>Lançamentos no Banco:</span>   <b style='color: #C5A059;  font-size: 18px;'>{total_banco}</b></div>
-            <div><span style='color: #F0F0F0;'>✅ Conciliados (Match):</span>  <b style='color: #00CC66;  font-size: 18px;'>{conciliados}</b></div>
-            <div><span style='color: #F0F0F0;'>❌ Pendentes:</span>            <b style='color: #FF4B4B;  font-size: 18px;'>{pendentes}</b></div>
-            <div><span style='color: #F0F0F0;'>🎯 Taxa de Sucesso:</span>      <b style='color: #C5A059;  font-size: 18px;'>{taxa:.1f}%</b></div>
-        </div>
-        """, unsafe_allow_html=True)
-
-        tab1, tab2, tab3 = st.tabs(["⚠️ Exigem Atenção (Pendentes)", "✅ Tudo Certo (Conciliados)", "📋 Visão Geral (Todos)"])
-        with tab1: st.dataframe(df_tela[df_tela['Status'] == '❌ Pendente no ERP'], use_container_width=True)
-        with tab2: st.dataframe(df_tela[df_tela['Status'] == '✅ Conciliado'],       use_container_width=True)
-        with tab3: st.dataframe(df_tela,                                              use_container_width=True)
-    else:
-        st.dataframe(df_tela, use_container_width=True)
-
-    st.write("---")
-
-    # --- BLOCO DE KPIs ---
-    total_credito = df_filtrado[df_filtrado['Tipo'] == 'CREDITO']['Valor'].sum()
-    total_debito  = abs(df[df['Tipo'] == 'DEBITO']['Valor'].sum())
-    saldo_liquido = total_credito - total_debito
-    cor_saldo     = "#C5A059" if saldo_liquido >= 0 else "#FF4B4B"
-
-    st.write("### 💎 Resumo Executivo")
-    kpi1, kpi2, kpi3 = st.columns(3)
-
-    # CORREÇÃO 2 em uso: kpi_card() no lugar dos blocos HTML gigantes em linha
-    with kpi1:
-        st.markdown(kpi_card("Total Créditos", total_credito, "#C5A059", "#C5A059"), unsafe_allow_html=True)
-    with kpi2:
-        st.markdown(kpi_card("Total Débitos",  total_debito,  "#5C4A26", "#F0F0F0"), unsafe_allow_html=True)
-    with kpi3:
         st.markdown(
-            f"<div style='background-color: rgba(197,160,89,0.1); border: 2px solid {cor_saldo}; "
-            f"padding: 20px; border-radius: 10px; text-align: center;'>"
-            f"<p style='margin:0; color:#F0F0F0; text-transform:uppercase; font-size:12px; letter-spacing:2px;'>Saldo Líquido</p>"
-            f"<h2 style='margin:0; color:{cor_saldo};'>R$ {saldo_liquido:,.2f}</h2>"
-            f"</div>",
+            "<p style='text-align:center;color:#C5A059;letter-spacing:2px;"
+            "font-size:10px;font-weight:600;margin-top:10px;margin-bottom:25px;'>"
+            "BPO FINANCEIRO & AUDITORIA DIGITAL</p>",
             unsafe_allow_html=True
         )
 
-    st.write("---")
+        with st.form("login_form", clear_on_submit=False):
+            password = st.text_input("Credencial de Acesso", type="password")
+            submit   = st.form_submit_button("AUTENTICAR")
+            if submit:
+                if password == st.secrets["general"]["access_password"]:
+                    st.session_state["password_correct"] = True
+                    st.rerun()
+                else:
+                    st.error("Credencial incorreta. Tente novamente.")
 
-    # --- EVOLUÇÃO DE FLUXO DE CAIXA ---
-    st.write("### 📈 Evolução de Fluxo de Caixa")
+    st.components.v1.html(
+        """<script>
+        setTimeout(function() {
+            var i = window.parent.document.querySelector('input[type="password"]');
+            if (i) i.focus();
+        }, 100);
+        </script>""",
+        height=0, width=0
+    )
+    return False
 
-    df_evolucao = df_filtrado.copy()
-    df_evolucao['Data'] = pd.to_datetime(df_evolucao['Data'])
 
-    if df_evolucao['Data'].dt.to_period('M').nunique() > 1:
-        df_evolucao['Periodo'] = df_evolucao['Data'].dt.to_period('M').astype(str)
-    else:
-        df_evolucao['Periodo'] = df_evolucao['Data'].dt.strftime('%d/%m')
+if not check_password():
+    st.stop()
 
-    df_evol_agrupada = df_evolucao.groupby(['Periodo', 'Tipo'])['Valor'].sum().abs().reset_index()
+
+# =============================================================================
+# CABEÇALHO COM MINI LOGO + LOGOUT
+# =============================================================================
+logo_b64 = get_image_base64("assets/logo.png")
+img_html = (
+    f'<img src="data:image/png;base64,{logo_b64}" style="height:28px;margin-right:12px;">'
+    if logo_b64 else ""
+)
+
+st.write("")
+col_cab, col_sair = st.columns([8, 1])
+
+with col_cab:
+    st.markdown(f"""
+        <div style="padding-top:5px;display:flex;align-items:center;">
+            {img_html}
+            <span style='color:#C5A059;font-size:20px;letter-spacing:2px;font-weight:700;text-transform:uppercase;'>
+                Analisegroup
+            </span>
+            <span style='color:#333;font-size:20px;margin:0 10px;'>|</span>
+            <span style='color:#F0F0F0;font-size:18px;font-weight:300;letter-spacing:1px;'>
+                Conciliação BPO e Unificação OFX
+            </span>
+        </div>
+    """, unsafe_allow_html=True)
+
+with col_sair:
+    if st.button("SAIR", key="btn_logout", use_container_width=True):
+        st.session_state["password_correct"] = False
+        st.session_state["ofx_carregado"]    = False
+        st.session_state["erp_carregado"]    = False
+        st.rerun()
+
+st.markdown(
+    "<hr style='border:none;border-bottom:1px solid rgba(197,160,89,0.2);"
+    "margin-top:10px;margin-bottom:28px;'>",
+    unsafe_allow_html=True
+)
+
+
+# =============================================================================
+# SEÇÃO 2 — UPLOAD DE ARQUIVOS
+# =============================================================================
+section_label("Entrada de dados")
+
+col_up1, col_up2 = st.columns(2)
+
+with col_up1:
+    st.markdown(
+        "<p style='color:#C5A059;font-weight:bold;font-size:12px;margin-bottom:4px;'>"
+        "1. A Verdade do Banco</p>",
+        unsafe_allow_html=True
+    )
+    arquivos_ofx = st.file_uploader(
+        "Extratos OFX (múltiplos bancos)",
+        type=["ofx"], accept_multiple_files=True,
+        help="Faça upload de um ou mais arquivos .OFX exportados pelo seu banco."
+    )
+    if arquivos_ofx:
+        st.session_state["ofx_carregado"] = True
+        nomes = ", ".join([f.name.replace(".ofx","").replace(".OFX","") for f in arquivos_ofx])
+        st.success(f"✅ {len(arquivos_ofx)} arquivo(s) · {nomes}")
+
+with col_up2:
+    st.markdown(
+        "<p style='color:#C5A059;font-weight:bold;font-size:12px;margin-bottom:4px;'>"
+        "2. A Verdade da Empresa</p>",
+        unsafe_allow_html=True
+    )
+    arquivo_erp = st.file_uploader(
+        "Controle interno (CSV ou Excel)",
+        type=["csv", "xlsx"],
+        help="Planilha do ERP com colunas 'Data' e 'Valor'."
+    )
+
+    fila_erp = []
+
+    if arquivo_erp:
+        try:
+            df_erp = (
+                pd.read_csv(arquivo_erp, sep=';', decimal=',')
+                if arquivo_erp.name.endswith('.csv')
+                else pd.read_excel(arquivo_erp)
+            )
+
+            coluna_valor = [c for c in df_erp.columns if 'VALOR' in str(c).upper()]
+            coluna_data  = [c for c in df_erp.columns if 'DATA'  in str(c).upper()]
+
+            if coluna_valor and coluna_data:
+                def limpar_numero(x):
+                    try:
+                        if pd.isna(x): return None
+                        if isinstance(x, (int, float)): return float(x)
+                        s = str(x).upper().replace('R$','').strip()
+                        if ',' in s: s = s.replace('.','').replace(',','.')
+                        return float(s)
+                    except:
+                        return None
+
+                df_erp['Valor_Limpo'] = df_erp[coluna_valor[0]].apply(limpar_numero)
+                df_erp['Data_Parsed'] = pd.to_datetime(df_erp[coluna_data[0]], errors='coerce')
+                df_erp_valido = df_erp.dropna(subset=['Valor_Limpo','Data_Parsed'])
+                fila_erp = df_erp_valido[['Data_Parsed','Valor_Limpo']].to_dict('records')
+                st.session_state["erp_carregado"] = True
+                st.success(f"✅ ERP carregado! {len(fila_erp)} lançamentos prontos.")
+            else:
+                st.error("A planilha precisa ter colunas com 'Data' e 'Valor' no nome.")
+        except Exception as e:
+            st.error(f"Erro na leitura: {e}")
+
+section_divider()
+
+if not arquivos_ofx:
+    st.info("👆 Anexe os extratos OFX para iniciar a auditoria.")
+    st.stop()
+
+if not fila_erp:
+    st.warning("⚠️ Operando só com a Verdade do Banco. Anexe o Controle Interno para habilitar o Motor de Match.")
+
+
+# =============================================================================
+# PROCESSAMENTO — OFX + MOTOR DE MATCH + TRANSFERÊNCIAS
+# =============================================================================
+dados = []
+for f in arquivos_ofx:
+    ofx          = OfxParser.parse(f)
+    codigo_raw   = str(ofx.account.routing_number).strip()
+    nome_banco   = BANCOS_MAPEADOS.get(codigo_raw.lstrip('0'), f"Banco {codigo_raw}")
+
+    for t in ofx.account.statement.transactions:
+        v = float(t.amount)
+        # Adicionamos o Arquivo_Origem como a primeira chave do dicionário
+        dados.append({
+            'Arquivo_Origem': f.name, 
+            'Banco':     nome_banco,
+            'Data':      t.date,
+            'Valor':     v,
+            'Tipo':      'CREDITO' if v >= 0 else 'DEBITO',
+            'Categoria': categorizar_transacao(t.memo),
+            'CNPJ':      extrair_cnpj(t.memo),
+            'Histórico': t.memo
+        })
+
+df = pd.DataFrame(dados)
+df['Data'] = pd.to_datetime(df['Data'])
+
+# Motor de Match (Valor exato + janela de 3 dias)
+if fila_erp:
+    status_match = []
+    df['_data_aux'] = df['Data']
+
+    for _, row in df.iterrows():
+        v_banco = abs(row['Valor'])
+        d_banco = row['_data_aux']
+        achou   = False
+
+        if pd.notnull(d_banco):
+            for item in fila_erp:
+                if abs(v_banco - abs(item['Valor_Limpo'])) < 0.01:
+                    if abs((d_banco - item['Data_Parsed']).days) <= 3:
+                        status_match.append('✅ Conciliado')
+                        fila_erp.remove(item)
+                        achou = True
+                        break
+
+        if not achou:
+            status_match.append('❌ Pendente no ERP')
+
+    df['Status'] = status_match
+    df = df.drop(columns=['_data_aux'])
+else:
+    df['Status'] = '⚠️ Aguardando ERP'
+
+# Detecção de transferências internas
+df_cruz = df.copy()
+df_cruz['Valor_Abs'] = df_cruz['Valor'].abs()
+lista_transf = [
+    grupo for _, grupo in df_cruz.groupby(['Data','Valor_Abs'])
+    if len(grupo) >= 2
+    and 'CREDITO' in grupo['Tipo'].values
+    and 'DEBITO'  in grupo['Tipo'].values
+]
+
+tem_transf = len(lista_transf) > 0
+if tem_transf:
+    df_transf = pd.concat(lista_transf).drop(columns=['Valor_Abs'])
+
+
+# =============================================================================
+# SEÇÃO 3 — FILTROS DE AUDITORIA (abertos por padrão)
+# =============================================================================
+section_label("Filtros de auditoria")
+
+with st.expander("🎯 Filtros Rápidos", expanded=False):
+    fc1, fc2, fc3 = st.columns(3)
+    with fc1:
+        bancos_sel = st.multiselect("Banco",     options=df['Banco'].unique(),     default=df['Banco'].unique())
+    with fc2:
+        cats_sel   = st.multiselect("Categoria", options=df['Categoria'].unique(), default=df['Categoria'].unique())
+    with fc3:
+        tipo_sel   = st.multiselect("Tipo",      options=df['Tipo'].unique(),      default=df['Tipo'].unique())
+
+df_f = df[
+    df['Banco'].isin(bancos_sel) &
+    df['Categoria'].isin(cats_sel) &
+    df['Tipo'].isin(tipo_sel)
+]
+
+section_divider()
+
+
+# =============================================================================
+# SEÇÃO 4 — RESUMO EXECUTIVO
+# =============================================================================
+section_label("Resumo executivo")
+
+credito   = df_f[df_f['Tipo']=='CREDITO']['Valor'].sum()
+debito    = abs(df_f[df_f['Tipo']=='DEBITO']['Valor'].sum())
+saldo     = credito - debito
+cor_saldo = "#C5A059" if saldo >= 0 else "#FF4B4B"
+
+k1, k2, k3, k4 = st.columns(4)
+with k1: st.markdown(kpi_card("Total Entradas", credito, "#C5A059", "#C5A059"), unsafe_allow_html=True)
+with k2: st.markdown(kpi_card("Total Saídas",   debito,  "#5C4A26", "#F0F0F0"), unsafe_allow_html=True)
+with k3:
+    st.markdown(
+        f"<div style='border:1px solid {cor_saldo};border-bottom:3px solid {cor_saldo};"
+        f"padding:16px 20px;border-radius:4px;background:#0A0A0A;'>"
+        f"<p style='margin:0 0 6px 0;color:#666;text-transform:uppercase;font-size:9px;letter-spacing:2px;'>Saldo Líquido</p>"
+        f"<h2 style='margin:0;color:{cor_saldo};font-size:20px;'>R$ {saldo:,.2f}</h2></div>",
+        unsafe_allow_html=True
+    )
+with k4:
+    st.markdown(
+        f"<div style='border:1px solid #1A1A1A;border-bottom:3px solid #333;"
+        f"padding:16px 20px;border-radius:4px;background:#0A0A0A;'>"
+        f"<p style='margin:0 0 6px 0;color:#666;text-transform:uppercase;font-size:9px;letter-spacing:2px;'>Lançamentos</p>"
+        f"<h2 style='margin:0;color:#F0F0F0;font-size:20px;'>{len(df_f)}</h2></div>",
+        unsafe_allow_html=True
+    )
+
+# Barra de status de conciliação
+if '✅ Conciliado' in df['Status'].values or '❌ Pendente no ERP' in df['Status'].values:
+    total  = len(df)
+    conc   = len(df[df['Status']=='✅ Conciliado'])
+    pend   = len(df[df['Status']=='❌ Pendente no ERP'])
+    n_tr   = len(df_transf) if tem_transf else 0
+    taxa   = conc / total * 100 if total > 0 else 0
+
+    st.markdown(f"""
+    <div style='background:#0A0A0A;border:1px solid #1A1A1A;border-left:4px solid #C5A059;
+                border-radius:0 6px 6px 0;padding:14px 20px;margin-top:12px;'>
+        <div style='display:flex;gap:32px;align-items:center;flex-wrap:wrap;'>
+            <div>
+                <span style='font-size:9px;color:#666;letter-spacing:2px;display:block;margin-bottom:3px;'>TOTAL NO BANCO</span>
+                <b style='color:#C5A059;font-size:18px;'>{total}</b>
+            </div>
+            <div>
+                <span style='font-size:9px;color:#666;letter-spacing:2px;display:block;margin-bottom:3px;'>CONCILIADOS</span>
+                <b style='color:#4CAF50;font-size:18px;'>{conc}</b>
+                <span style='color:#2a6b2a;font-size:11px;margin-left:4px;'>{taxa:.1f}%</span>
+            </div>
+            <div>
+                <span style='font-size:9px;color:#666;letter-spacing:2px;display:block;margin-bottom:3px;'>PENDENTES</span>
+                <b style='color:#FF4B4B;font-size:18px;'>{pend}</b>
+            </div>
+            <div>
+                <span style='font-size:9px;color:#666;letter-spacing:2px;display:block;margin-bottom:3px;'>TRANSFERÊNCIAS</span>
+                <b style='color:#C5A059;font-size:18px;'>{n_tr}</b>
+            </div>
+            <div style='flex:1;min-width:120px;'>
+                <div style='height:4px;background:#1A1A1A;border-radius:2px;overflow:hidden;'>
+                    <div style='height:100%;width:{taxa:.1f}%;background:linear-gradient(90deg,#4CAF50,#C5A059);border-radius:2px;'></div>
+                </div>
+                <span style='font-size:9px;color:#555;margin-top:4px;display:block;'>Taxa de conciliação</span>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+section_divider()
+
+
+# =============================================================================
+# SEÇÃO 5 — TRIAGEM DE CONCILIAÇÃO (aba de transferências integrada)
+# =============================================================================
+section_label("Triagem de conciliação")
+
+df_tela         = df_f.copy()
+df_tela['Data'] = df_tela['Data'].dt.strftime('%d/%m/%Y')
+df_tela['Valor']= df_tela['Valor'].apply(formatar_brl)
+
+n_pend  = len(df_tela[df_tela['Status']=='❌ Pendente no ERP']) if 'Status' in df_tela.columns else 0
+n_conc  = len(df_tela[df_tela['Status']=='✅ Conciliado'])       if 'Status' in df_tela.columns else 0
+n_tr_ab = len(df_transf) if tem_transf else 0
+
+if fila_erp is not None and len(df) > 0:
+    tab1, tab2, tab3, tab4 = st.tabs([
+        f"⚠️ Pendentes ({n_pend})",
+        f"✅ Conciliados ({n_conc})",
+        f"📋 Todos ({len(df_tela)})",
+        f"🔄 Transferências ({n_tr_ab})"
+    ])
+    with tab1:
+        st.dataframe(df_tela[df_tela['Status']=='❌ Pendente no ERP'], use_container_width=True)
+    with tab2:
+        st.dataframe(df_tela[df_tela['Status']=='✅ Conciliado'],       use_container_width=True)
+    with tab3:
+        st.dataframe(df_tela,                                            use_container_width=True)
+    with tab4:
+        if tem_transf:
+            dt = df_transf.copy()
+            dt['Data']  = dt['Data'].apply(lambda x: x.strftime('%d/%m/%Y') if hasattr(x,'strftime') else str(x))
+            dt['Valor'] = dt['Valor'].apply(formatar_brl)
+            st.info("💡 Mesmo valor e data entre contas diferentes — anulam-se no saldo líquido.")
+            st.dataframe(dt, use_container_width=True)
+        else:
+            st.success("Nenhuma transferência interna detectada neste período.")
+else:
+    st.dataframe(df_tela, use_container_width=True)
+
+section_divider()
+
+
+# =============================================================================
+# SEÇÃO 6 — ANÁLISE VISUAL (fluxo de caixa + categorias lado a lado)
+# =============================================================================
+section_label("Análise visual")
+
+col_g1, col_g2 = st.columns(2)
+
+with col_g1:
+    st.markdown(
+        "<p style='font-size:10px;color:#888;letter-spacing:1px;margin-bottom:6px;'>FLUXO DE CAIXA</p>",
+        unsafe_allow_html=True
+    )
+    df_evol = df_f.copy()
+    df_evol['Periodo'] = (
+        df_evol['Data'].dt.to_period('M').astype(str)
+        if df_evol['Data'].dt.to_period('M').nunique() > 1
+        else df_evol['Data'].dt.strftime('%d/%m')
+    )
+    df_evol_g = df_evol.groupby(['Periodo','Tipo'])['Valor'].sum().abs().reset_index()
 
     fig_evol = px.line(
-        df_evol_agrupada,
-        x='Periodo', y='Valor', color='Tipo',
+        df_evol_g, x='Periodo', y='Valor', color='Tipo',
         markers=True, line_shape="spline",
-        color_discrete_map={'CREDITO': '#C5A059', 'DEBITO': '#FF4B4B'},
+        color_discrete_map={'CREDITO':'#C5A059','DEBITO':'#FF4B4B'},
         template="plotly_dark"
     )
     fig_evol.update_layout(
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, title=None),
         xaxis=dict(title=None, showgrid=False),
-        yaxis=dict(title="Montante (R$)", showgrid=True, gridcolor='rgba(255,255,255,0.05)'),
-        margin=dict(t=50, b=0, l=0, r=0),
-        hovermode="x unified"
+        yaxis=dict(title=None, showgrid=True, gridcolor='rgba(255,255,255,0.05)'),
+        margin=dict(t=40,b=0,l=0,r=0), hovermode="x unified", height=280
     )
-    fig_evol.update_traces(line=dict(width=4), marker=dict(size=8))
+    fig_evol.update_traces(line=dict(width=3), marker=dict(size=6))
     st.plotly_chart(fig_evol, use_container_width=True)
 
-    # --- ALERTA DE TRANSFERÊNCIAS INTERNAS ---
-    if tem_transferencias:
-        st.write("### 🔄 Alerta de Transferências Internas")
-        st.markdown(
-            "<p style='color: #C5A059; font-size: 14px;'>"
-            "<i>Possíveis movimentações entre contas da mesma titularidade.</i></p>",
-            unsafe_allow_html=True
+with col_g2:
+    st.markdown(
+        "<p style='font-size:10px;color:#888;letter-spacing:1px;margin-bottom:6px;'>GASTOS POR CATEGORIA</p>",
+        unsafe_allow_html=True
+    )
+    df_cat = (
+        df_f[df_f['Tipo']=='DEBITO']
+        .groupby('Categoria')['Valor'].sum().abs()
+        .reset_index().sort_values('Valor', ascending=False)
+    )
+
+    if not df_cat.empty:
+        fig_cat = go.Figure(go.Pie(
+            labels=df_cat['Categoria'],
+            values=df_cat['Valor'],
+            hole=0.55,
+            marker=dict(
+                colors=[CORES_CATEGORIA.get(c,'#888') for c in df_cat['Categoria']],
+                line=dict(color='#000', width=1)
+            ),
+            textinfo='percent',
+            textfont=dict(size=10, color='#fff'),
+            hovertemplate='<b>%{label}</b><br>R$ %{value:,.2f}<br>%{percent}<extra></extra>'
+        ))
+        fig_cat.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            legend=dict(orientation="v", font=dict(size=10, color='#888'),
+                        bgcolor='rgba(0,0,0,0)', x=1, y=0.5),
+            margin=dict(t=40,b=0,l=0,r=0), height=280
         )
-        df_transferencias_tela = df_transferencias.copy()
-        df_transferencias_tela['Valor'] = df_transferencias_tela['Valor'].apply(formatar_brl)
-        st.dataframe(df_transferencias_tela, use_container_width=True)
-        st.info("💡 Estas transações anulam umas às outras no Saldo Líquido.")
+        st.plotly_chart(fig_cat, use_container_width=True)
+    else:
+        st.info("Sem débitos no período filtrado para exibir categorias.")
+
+section_divider()
+
+
+# =============================================================================
+# SEÇÃO 7 — EXPORTAÇÃO (última etapa)
+# =============================================================================
+section_label("Exportação")
+
+try:
+    periodo = df_f['Data'].min().strftime('%m_%Y')
+except:
+    periodo = "GERAL"
+
+st.markdown(
+    "<p style='color:#C5A059;font-size:12px;margin-bottom:8px;'>Selecione o formato:</p>",
+    unsafe_allow_html=True
+)
+sistema = st.radio(
+    "Formato", ["Padrão Analisegroup (CSV Gerencial)", "Domínio Sistemas (TXT Contábil)"],
+    horizontal=True, label_visibility="collapsed"
+)
+
+st.write("")
+cb1, cb2 = st.columns(2)
+
+with cb1:
+    if sistema == "Domínio Sistemas (TXT Contábil)":
+        dx = df.copy()
+        dx['Conta_Debito']   = dx.apply(lambda r: 100 if r['Tipo']=='CREDITO' else 400, axis=1)
+        dx['Conta_Credito']  = dx.apply(lambda r: 300 if r['Tipo']=='CREDITO' else 100, axis=1)
+        dx['Data_Fmt']       = pd.to_datetime(dx['Data']).dt.strftime('%d/%m/%Y')
+        dom = dx[['Data_Fmt','Conta_Debito','Conta_Credito','Valor','Histórico']].copy()
+        dom.columns = ['Data','Conta_Debito','Conta_Credito','Valor','Historico']
+        arq = dom.to_csv(index=False, sep=';', decimal=',', encoding='windows-1252').encode('windows-1252')
+        st.download_button("⚙️ Baixar TXT para Domínio",    data=arq, file_name=f"IMPORTACAO_DOMINIO_{periodo}.txt",       mime="text/plain", use_container_width=True)
+    else:
+        arq = df.to_csv(index=False, sep=';', decimal=',', encoding='utf-8-sig').encode('utf-8-sig')
+        st.download_button("📄 Baixar Planilha Consolidada", data=arq, file_name=f"ANALISEGROUP_CONSOLIDADO_{periodo}.csv", mime="text/csv",   use_container_width=True)
+
+with cb2:
+    if tem_transf:
+        ct = df_transf.to_csv(index=False, sep=';', decimal=',', encoding='utf-8-sig').encode('utf-8-sig')
+        st.download_button("🔄 Baixar Relatório de Transferências", data=ct, file_name=f"TRANSFERENCIAS_{periodo}.csv", mime="text/csv", use_container_width=True)
+    else:
+        st.button("✅ Sem transferências internas", disabled=True, use_container_width=True)
