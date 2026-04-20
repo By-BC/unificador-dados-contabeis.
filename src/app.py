@@ -442,7 +442,7 @@ if tem_transf:
 
 
 # =============================================================================
-# SEÇÃO 3 — FILTROS DE AUDITORIA (abertos por padrão)
+# SEÇÃO 3 — FILTROS DE AUDITORIA (banco / categoria / tipo)
 # =============================================================================
 section_label("Filtros de auditoria")
 
@@ -455,11 +455,12 @@ with st.expander("🎯 Filtros Rápidos", expanded=False):
     with fc3:
         tipo_sel   = st.multiselect("Tipo",      options=df['Tipo'].unique(),      default=df['Tipo'].unique())
 
+# Aplicação dos filtros de banco / categoria / tipo
 df_f = df[
     df['Banco'].isin(bancos_sel) &
     df['Categoria'].isin(cats_sel) &
     df['Tipo'].isin(tipo_sel)
-]
+].copy()
 
 section_divider()
 
@@ -537,11 +538,56 @@ section_divider()
 
 
 # =============================================================================
-# SEÇÃO 5 — TRIAGEM DE CONCILIAÇÃO (aba de transferências integrada)
+# SEÇÃO 5 — FILTROS DE DATA E VALOR + TRIAGEM DE CONCILIAÇÃO
 # =============================================================================
 section_label("Triagem de conciliação")
 
-df_tela         = df_f.copy()
+# --- Filtros simples: uma data e um valor ---
+_data_min = df_f['Data'].min().date()
+_data_max = df_f['Data'].max().date()
+
+ff1, ff2, ff3 = st.columns([2, 2, 3])
+with ff1:
+    filtro_data = st.date_input(
+        "Filtrar por data", value=None,
+        min_value=_data_min, max_value=_data_max,
+        format="DD/MM/YYYY", key="filtro_data",
+        help="Deixe em branco para mostrar todas as datas."
+    )
+with ff2:
+    filtro_valor_str = st.text_input(
+        "Filtrar por valor (R$)", value="",
+        placeholder="Ex: 1500,00", key="filtro_valor",
+        help="Digite um valor exato para filtrar."
+    )
+with ff3:
+    st.write("")  # espaço para alinhar visualmente
+
+# Aplicação dos filtros de data e valor sobre df_f
+df_filtrado = df_f.copy()
+
+if filtro_data:
+    df_filtrado = df_filtrado[df_filtrado['Data'].dt.date == filtro_data]
+
+if filtro_valor_str.strip():
+    try:
+        filtro_valor = float(filtro_valor_str.strip().replace(',', '.'))
+        df_filtrado  = df_filtrado[abs(df_filtrado['Valor'].abs() - filtro_valor) < 0.01]
+    except ValueError:
+        st.warning("⚠️ Valor inválido — use números (ex: 1500,00).")
+        df_filtrado = df_f.copy()
+
+# Badge de resultado
+_n_total = len(df_f)
+_n_exib  = len(df_filtrado)
+if _n_exib < _n_total:
+    st.markdown(
+        f"<p style='font-size:10px;color:#4A90D9;letter-spacing:1px;margin:8px 0 4px 0;'>"
+        f"🔍 {_n_exib} de {_n_total} lançamentos exibidos.</p>",
+        unsafe_allow_html=True
+    )
+
+df_tela         = df_filtrado.copy()
 df_tela['Data'] = df_tela['Data'].dt.strftime('%d/%m/%Y')
 df_tela['Valor']= df_tela['Valor'].apply(formatar_brl)
 
@@ -550,10 +596,10 @@ n_conc  = len(df_tela[df_tela['Status']=='✅ Conciliado'])       if 'Status' in
 n_tr_ab = len(df_transf) if tem_transf else 0
 
 if fila_erp is not None and len(df) > 0:
-    tab1, tab2, tab3, tab4 = st.tabs([
-        f"⚠️ Pendentes ({n_pend})",
-        f"✅ Conciliados ({n_conc})",
+    tab3, tab2, tab1, tab4 = st.tabs([
         f"📋 Todos ({len(df_tela)})",
+        f"✅ Conciliados ({n_conc})",
+        f"⚠️ Pendentes ({n_pend})",
         f"🔄 Transferências ({n_tr_ab})"
     ])
     with tab1:
@@ -686,9 +732,9 @@ with cb1:
         arq = df.to_csv(index=False, sep=';', decimal=',', encoding='utf-8-sig').encode('utf-8-sig')
         st.download_button("📄 Baixar Planilha Consolidada", data=arq, file_name=f"ANALISEGROUP_CONSOLIDADO_{periodo}.csv", mime="text/csv",   use_container_width=True)
 
-with cb2:
-    if tem_transf:
-        ct = df_transf.to_csv(index=False, sep=';', decimal=',', encoding='utf-8-sig').encode('utf-8-sig')
-        st.download_button("🔄 Baixar Relatório de Transferências", data=ct, file_name=f"TRANSFERENCIAS_{periodo}.csv", mime="text/csv", use_container_width=True)
-    else:
-        st.button("✅ Sem transferências internas", disabled=True, use_container_width=True)
+#with cb2:
+   # if tem_transf:
+      #  ct = df_transf.to_csv(index=False, sep=';', decimal=',', encoding='utf-8-sig').encode('utf-8-sig')
+     #   st.download_button("🔄 Baixar Relatório de Transferências", data=ct, file_name=f"TRANSFERENCIAS_{periodo}.csv", mime="text/csv", use_container_width=True)
+   # else:
+    #    st.button("✅ Sem transferências internas", disabled=True, use_container_width=True)
